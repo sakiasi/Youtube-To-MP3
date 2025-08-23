@@ -48,4 +48,4 @@ downloads/
 *.mp3
 *.tmp
 # Python virtual environment
-venv/
+/venv
