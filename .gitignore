@@ -47,3 +47,5 @@ __pycache__/
 downloads/
 *.mp3
 *.tmp
+# Python virtual environment
+venv/
