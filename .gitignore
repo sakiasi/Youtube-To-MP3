@@ -44,3 +44,6 @@ next-env.d.ts
 venv/
 __pycache__/
 *.pyc
+downloads/
+*.mp3
+*.tmp
