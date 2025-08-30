@@ -1,7 +1,18 @@
 "use client";
+
 import { useState, useRef } from "react";
+import Image from "next/image";
+
+type VideoResult = {
+  title: string;
+  videoId: string;
+  thumbnail: string;
+  duration: string;
+};
 
 export default function Home() {
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<VideoResult[]>([]);
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
   const [file, setFile] = useState("");
@@ -9,12 +20,21 @@ export default function Home() {
   const [progress, setProgress] = useState(0);
   const evtRef = useRef<EventSource | null>(null);
 
-  const handleDownload = () => {
-    if (!url) {
+  const handleSearch = async () => {
+    if (!query) return;
+    const res = await fetch(`/api/search?query=${encodeURIComponent(query)}`);
+    const data = await res.json();
+    setSearchResults(data.items);
+  };
+
+  const handleDownload = (videoId?: string) => {
+    const downloadUrl = videoId ? `https://www.youtube.com/watch?v=${videoId}` : url;
+    if (!downloadUrl) {
       setStatus("Please enter a YouTube URL.");
       return;
     }
 
+    setUrl(downloadUrl);
     setStatus("Starting...");
     setFile("");
     setDownloading(true);
@@ -25,7 +45,7 @@ export default function Home() {
       evtRef.current = null;
     }
 
-    const streamUrl = `/api/download?url=${encodeURIComponent(url)}`;
+    const streamUrl = `/api/download?url=${encodeURIComponent(downloadUrl)}`;
     const es = new EventSource(streamUrl);
     evtRef.current = es;
 
@@ -62,53 +82,97 @@ export default function Home() {
     };
   };
 
-  const handleCancel = () => {
-    if (evtRef.current) {
-      evtRef.current.close();
-      evtRef.current = null;
-    }
-    setDownloading(false);
-    setStatus("Download canceled.");
-  };
-
-  const handleSave = () => {
-    if (!file) return;
-    const link = document.createElement("a");
-    link.href = `/downloads/${encodeURIComponent(file)}`;
-    link.download = file;
-    link.click();
-  };
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", minHeight: "100vh", padding: "2rem", background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)", color: "#fff", fontFamily: "Arial, sans-serif", textAlign: "center" }}>
-      <h1 style={{ fontSize: "2.5rem", marginBottom: "1rem" }}>YouTube to MP3 Downloader</h1>
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 flex flex-col items-center p-6">
+      <h1 className="text-4xl font-bold mb-8 text-center text-blue-600 dark:text-blue-400">
+        YouTube MP3 Downloader
+      </h1>
 
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "1rem", width: "100%", maxWidth: "500px" }}>
-        <input type="text" placeholder="Enter YouTube URL" value={url} onChange={(e) => setUrl(e.target.value)} style={{ width: "100%", padding: "0.75rem 1rem", borderRadius: "8px", border: "none", fontSize: "1rem", outline: "none" }} />
-        
-        <div style={{ display: "flex", gap: "10px", width: "100%" }}>
-          <button onClick={handleDownload} disabled={downloading} style={{ flex: 1, padding: "0.75rem 1rem", borderRadius: "8px", border: "none", background: downloading ? "#999" : "#ff5c5c", color: "#fff", fontSize: "1rem", cursor: downloading ? "not-allowed" : "pointer" }}>
-            {downloading ? "Processing..." : "Download"}
-          </button>
-
-          {downloading && (
-            <button onClick={handleCancel} style={{ flex: 1, padding: "0.75rem 1rem", borderRadius: "8px", border: "none", background: "#555", color: "#fff", fontSize: "1rem", cursor: "pointer" }}>
-              Cancel
-            </button>
-          )}
-        </div>
-
-        {downloading && (
-          <div style={{ width: "100%", background: "#ccc", borderRadius: "8px", marginTop: "10px" }}>
-            <div style={{ width: `${progress}%`, background: "#4caf50", height: "10px", borderRadius: "8px" }}></div>
-          </div>
-        )}
+      {/* Search Section */}
+      <div className="flex flex-col sm:flex-row w-full max-w-3xl mb-6 gap-3">
+        <input
+          type="text"
+          placeholder="Search YouTube..."
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 p-3 rounded-lg border border-gray-300 dark:border-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-800 dark:text-gray-100"
+        />
+        <button
+          onClick={handleSearch}
+          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
+        >
+          Search
+        </button>
       </div>
 
-      <p style={{ marginTop: "1rem", minHeight: "1.2rem" }}>{status}</p>
+      {/* Search Results */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
+        {searchResults.map((video) => (
+          <div
+            key={video.videoId}
+            className="flex flex-col sm:flex-row items-center bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200"
+          >
+            <Image
+              src={video.thumbnail}
+              alt={video.title}
+              width={160}
+              height={90}
+              className="object-cover sm:w-40 sm:h-full"
+            />
+            <div className="p-4 flex flex-col justify-between w-full">
+              <p className="font-semibold text-lg mb-2">{video.title}</p>
+              <button
+                onClick={() => handleDownload(video.videoId)}
+                className="self-start bg-green-500 hover:bg-green-600 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200"
+              >
+                Download MP3
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
 
+      {/* Direct URL Download */}
+      <div className="flex flex-col sm:flex-row mt-10 w-full max-w-3xl gap-3">
+        <input
+          type="text"
+          placeholder="Or paste YouTube URL"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className="flex-1 p-3 rounded-lg border border-gray-300 dark:border-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-800 dark:text-gray-100"
+        />
+        <button
+          onClick={() => handleDownload()}
+          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
+        >
+          Download
+        </button>
+      </div>
+
+      {/* Progress */}
+      {downloading && (
+        <div className="w-full max-w-3xl mt-6">
+          <p className="mb-2 font-medium">{status}</p>
+          <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-3">
+            <div
+              className="bg-green-500 h-3 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+
+      {/* Download MP3 Button */}
       {file && (
-        <button onClick={handleSave} style={{ marginTop: "1rem", padding: "0.75rem 1rem", borderRadius: "8px", border: "none", background: "#4caf50", color: "#fff", fontSize: "1rem", cursor: "pointer" }}>
+        <button
+          onClick={() => {
+            const link = document.createElement("a");
+            link.href = `/downloads/${encodeURIComponent(file)}`;
+            link.download = file;
+            link.click();
+          }}
+          className="mt-6 bg-purple-500 hover:bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
+        >
           Download MP3
         </button>
       )}
