@@ -15,8 +15,7 @@ export default function Home() {
   const [searchResults, setSearchResults] = useState<VideoResult[]>([]);
   const [url, setUrl] = useState("");
   const [status, setStatus] = useState("");
-  const [file, setFile] = useState("");
-  const [downloading, setDownloading] = useState(false);
+  const [downloadingVideoId, setDownloadingVideoId] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
   const evtRef = useRef<EventSource | null>(null);
 
@@ -34,10 +33,8 @@ export default function Home() {
       return;
     }
 
-    setUrl(downloadUrl);
     setStatus("Starting...");
-    setFile("");
-    setDownloading(true);
+    setDownloadingVideoId(videoId || "direct"); // Mark which video is downloading
     setProgress(0);
 
     if (evtRef.current) {
@@ -60,15 +57,22 @@ export default function Home() {
         setStatus(data.replace("STEP:", ""));
       } else if (data.startsWith("FILE:")) {
         const filename = data.replace("FILE:", "");
-        setFile(filename);
-        setStatus("Process complete");
+        setStatus("Conversion complete! Downloading...");
+
+        // Auto-download MP3
+        const link = document.createElement("a");
+        link.href = `/downloads/${encodeURIComponent(filename)}`;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
       } else if (data === "DONE") {
-        setDownloading(false);
+        setDownloadingVideoId(null);
         es.close();
         evtRef.current = null;
       } else if (data.startsWith("ERROR:")) {
         setStatus(data.replace("ERROR:", ""));
-        setDownloading(false);
+        setDownloadingVideoId(null);
         es.close();
         evtRef.current = null;
       }
@@ -76,7 +80,7 @@ export default function Home() {
 
     es.onerror = () => {
       setStatus("Error occurred during download.");
-      setDownloading(false);
+      setDownloadingVideoId(null);
       es.close();
       evtRef.current = null;
     };
@@ -87,6 +91,39 @@ export default function Home() {
       <h1 className="text-4xl font-bold mb-8 text-center text-blue-600 dark:text-blue-400">
         YouTube MP3 Downloader
       </h1>
+
+      <div className="flex flex-col sm:flex-row w-full max-w-3xl mb-6 gap-3">
+        {/* Direct URL Download */}
+        <div className="flex flex-col sm:flex-row mt-10 w-full max-w-3xl gap-3">
+          <input
+            type="text"
+            placeholder="Paste YouTube URL"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            className="flex-1 p-3 rounded-lg border border-gray-300 dark:border-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-800 dark:text-gray-100"
+          />
+          <button
+            onClick={() => handleDownload()}
+            className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
+          >
+            Download
+          </button>
+        </div>
+
+        {/* Global Progress for direct URL */}
+        {downloadingVideoId === "direct" && (
+          <div className="w-full max-w-3xl mt-6">
+            <p className="mb-2 font-medium">{status}</p>
+            <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-3">
+              <div
+                className="bg-green-500 h-3 rounded-full transition-all duration-300"
+                style={{ width: `${progress}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
+      </div>
+
 
       {/* Search Section */}
       <div className="flex flex-col sm:flex-row w-full max-w-3xl mb-6 gap-3">
@@ -107,75 +144,54 @@ export default function Home() {
 
       {/* Search Results */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full max-w-3xl">
-        {searchResults.map((video) => (
-          <div
-            key={video.videoId}
-            className="flex flex-col sm:flex-row items-center bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200"
-          >
-            <Image
-              src={video.thumbnail}
-              alt={video.title}
-              width={160}
-              height={90}
-              className="object-cover sm:w-40 sm:h-full"
-            />
-            <div className="p-4 flex flex-col justify-between w-full">
-              <p className="font-semibold text-lg mb-2">{video.title}</p>
-              <button
-                onClick={() => handleDownload(video.videoId)}
-                className="self-start bg-green-500 hover:bg-green-600 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200"
-              >
-                Download MP3
-              </button>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Direct URL Download */}
-      <div className="flex flex-col sm:flex-row mt-10 w-full max-w-3xl gap-3">
-        <input
-          type="text"
-          placeholder="Or paste YouTube URL"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="flex-1 p-3 rounded-lg border border-gray-300 dark:border-gray-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:bg-gray-800 dark:text-gray-100"
-        />
-        <button
-          onClick={() => handleDownload()}
-          className="bg-blue-500 hover:bg-blue-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
-        >
-          Download
-        </button>
-      </div>
-
-      {/* Progress */}
-      {downloading && (
-        <div className="w-full max-w-3xl mt-6">
-          <p className="mb-2 font-medium">{status}</p>
-          <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-3">
+        {searchResults.map((video) => {
+          const isDownloading = downloadingVideoId === video.videoId;
+          return (
             <div
-              className="bg-green-500 h-3 rounded-full transition-all duration-300"
-              style={{ width: `${progress}%` }}
-            ></div>
-          </div>
-        </div>
-      )}
+              key={video.videoId}
+              className="flex flex-col sm:flex-row items-center bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden hover:shadow-xl transition-shadow duration-200"
+            >
+              <Image
+                src={video.thumbnail}
+                alt={video.title}
+                width={160}
+                height={90}
+                className="object-cover sm:w-40 sm:h-full"
+              />
+              <div className="p-4 flex flex-col justify-between w-full">
+                <p className="font-semibold text-lg mb-1">{video.title}</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">
+                  Duration: {video.duration}
+                </p>
+                <button
+                  onClick={() => handleDownload(video.videoId)}
+                  className={`self-start bg-green-500 hover:bg-green-600 text-white font-medium px-4 py-2 rounded-lg transition-colors duration-200 ${
+                    isDownloading ? "opacity-70 cursor-not-allowed" : ""
+                  }`}
+                  disabled={isDownloading}
+                >
+                  {isDownloading ? "Downloading..." : "Download MP3"}
+                </button>
 
-      {/* Download MP3 Button */}
-      {file && (
-        <button
-          onClick={() => {
-            const link = document.createElement("a");
-            link.href = `/downloads/${encodeURIComponent(file)}`;
-            link.download = file;
-            link.click();
-          }}
-          className="mt-6 bg-purple-500 hover:bg-purple-600 text-white font-semibold px-6 py-3 rounded-lg shadow transition-colors duration-200"
-        >
-          Download MP3
-        </button>
-      )}
+                {/* Progress Bar */}
+                {isDownloading && (
+                  <div className="w-full mt-3">
+                    <div className="w-full bg-gray-300 dark:bg-gray-700 rounded-full h-3">
+                      <div
+                        className="bg-green-500 h-3 rounded-full transition-all duration-300"
+                        style={{ width: `${progress}%` }}
+                      ></div>
+                    </div>
+                    <p className="mt-1 text-sm">{status}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+     
     </div>
   );
 }
